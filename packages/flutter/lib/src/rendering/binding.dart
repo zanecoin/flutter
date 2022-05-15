@@ -32,7 +32,7 @@ mixin RendererBinding on BindingBase, ServicesBinding, SchedulerBinding, Gesture
       onSemanticsOwnerCreated: _handleSemanticsOwnerCreated,
       onSemanticsOwnerDisposed: _handleSemanticsOwnerDisposed,
     );
-    window
+    platformDispatcher
       ..onMetricsChanged = handleMetricsChanged
       ..onTextScaleFactorChanged = handleTextScaleFactorChanged
       ..onPlatformBrightnessChanged = handlePlatformBrightnessChanged
@@ -235,10 +235,13 @@ mixin RendererBinding on BindingBase, ServicesBinding, SchedulerBinding, Gesture
   ///
   /// See [dart:ui.PlatformDispatcher.onMetricsChanged].
   @protected
+  @visibleForTesting
   void handleMetricsChanged() {
     assert(renderView != null);
     renderView.configuration = createViewConfiguration();
-    scheduleForcedFrame();
+    if (renderView.child != null) {
+      scheduleForcedFrame();
+    }
   }
 
   /// Called when the platform text scale factor changes.
@@ -327,7 +330,7 @@ mixin RendererBinding on BindingBase, ServicesBinding, SchedulerBinding, Gesture
   }
 
   void _handleSemanticsEnabledChanged() {
-    setSemanticsEnabled(window.semanticsEnabled);
+    setSemanticsEnabled(platformDispatcher.semanticsEnabled);
   }
 
   /// Whether the render tree associated with this binding should produce a tree
@@ -513,7 +516,7 @@ mixin RendererBinding on BindingBase, ServicesBinding, SchedulerBinding, Gesture
     await super.performReassemble();
     if (BindingBase.debugReassembleConfig?.widgetName == null) {
       if (!kReleaseMode) {
-        Timeline.startSync('Preparing Hot Reload (layout)', arguments: timelineArgumentsIndicatingLandmarkEvent);
+        Timeline.startSync('Preparing Hot Reload (layout)');
       }
       try {
         renderView.reassemble();

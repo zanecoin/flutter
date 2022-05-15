@@ -17,13 +17,22 @@ import '../vmservice.dart';
 import 'test_device.dart';
 import 'watcher.dart';
 
-/// A class that's used to collect coverage data during tests.
+/// A class that collects code coverage data during test runs.
 class CoverageCollector extends TestWatcher {
   CoverageCollector({this.libraryPredicate, this.verbose = true, @required this.packagesPath});
 
+  /// True when log messages should be emitted.
   final bool verbose;
+
+  /// The path to the package_config.json of the package for which code
+  /// coverage is computed.
   final String packagesPath;
-  Map<String, Map<int, int>> _globalHitmap;
+
+  /// Map of file path to coverage hit map for that file.
+  Map<String, coverage.HitMap> _globalHitmap;
+
+  /// Predicate function that returns true if the specified library URI should
+  /// be included in the computed coverage.
   bool Function(String) libraryPredicate;
 
   @override
@@ -43,12 +52,26 @@ class CoverageCollector extends TestWatcher {
     }
   }
 
-  void _addHitmap(Map<String, Map<int, int>> hitmap) {
+  void _addHitmap(Map<String, coverage.HitMap> hitmap) {
     if (_globalHitmap == null) {
       _globalHitmap = hitmap;
     } else {
-      coverage.mergeHitmaps(hitmap, _globalHitmap);
+      _globalHitmap.merge(hitmap);
     }
+  }
+
+  /// The directory of the package for which coverage is being collected.
+  String get packageDirectory {
+    // The coverage package expects the directory of the package itself, and
+    // uses that to locate the package_info.json file, which it treats as a
+    // private implementation detail. In general, the package_info.json file is
+    // located in `.dart_tool/package_info.json` relative to the package
+    // directory, so we return the grandparent directory of that file.
+    //
+    // This may not be a safe assumption in non-standard environments, such as
+    // when building under build systems such as Bazel. In those cases, this
+    // getter should be overridden.
+    return globals.fs.directory(globals.fs.file(packagesPath).dirname).dirname;
   }
 
   /// Collects coverage for an isolate using the given `port`.
@@ -67,9 +90,11 @@ class CoverageCollector extends TestWatcher {
     assert(data != null);
 
     _logMessage('($observatoryUri): collected coverage data; merging...');
-    _addHitmap(await coverage.createHitmap(
+    _addHitmap(await coverage.HitMap.parseJson(
       data['coverage'] as List<Map<String, dynamic>>,
-      packagesPath: packagesPath,
+      // TODO(cbracken): https://github.com/flutter/flutter/issues/103830
+      // Replace with packagePath: packageDirectory
+      packagesPath: packagesPath, // ignore: deprecated_member_use
       checkIgnoredLines: true,
     ));
     _logMessage('($observatoryUri): done merging coverage data into global coverage map.');
@@ -110,41 +135,47 @@ class CoverageCollector extends TestWatcher {
     assert(data != null);
 
     _logMessage('Merging coverage data...');
-    _addHitmap(await coverage.createHitmap(
+    _addHitmap(await coverage.HitMap.parseJson(
       data['coverage'] as List<Map<String, dynamic>>,
-      packagesPath: packagesPath,
+      // TODO(cbracken): https://github.com/flutter/flutter/issues/103830
+      // Replace with packagePath: packageDirectory
+      packagesPath: packagesPath, // ignore: deprecated_member_use
       checkIgnoredLines: true,
     ));
     _logMessage('Done merging coverage data into global coverage map.');
   }
 
-  /// Returns a future that will complete with the formatted coverage data
-  /// (using [formatter]) once all coverage data has been collected.
+  /// Returns formatted coverage data once all coverage data has been collected.
   ///
   /// This will not start any collection tasks. It us up to the caller of to
   /// call [collectCoverage] for each process first.
-  Future<String> finalizeCoverage({
-    coverage.Formatter formatter,
+  String finalizeCoverage({
+    String Function(Map<String, coverage.HitMap> hitmap) formatter,
+    coverage.Resolver resolver,
     Directory coverageDirectory,
-  }) async {
+  }) {
     if (_globalHitmap == null) {
       return null;
     }
     if (formatter == null) {
-      final coverage.Resolver resolver = coverage.Resolver(packagesPath: packagesPath);
+      // TODO(cbracken): https://github.com/flutter/flutter/issues/103830
+      // Replace with: resolver ??= await coverage.Resolver.create(packagesPath: packagesPath);
+      // ignore: deprecated_member_use
+      resolver ??= coverage.Resolver(packagesPath: packagesPath);
       final String packagePath = globals.fs.currentDirectory.path;
       final List<String> reportOn = coverageDirectory == null
-        ? <String>[globals.fs.path.join(packagePath, 'lib')]
-        : <String>[coverageDirectory.path];
-      formatter = coverage.LcovFormatter(resolver, reportOn: reportOn, basePath: packagePath);
+          ? <String>[globals.fs.path.join(packagePath, 'lib')]
+          : <String>[coverageDirectory.path];
+      formatter = (Map<String, coverage.HitMap> hitmap) => hitmap
+          .formatLcov(resolver, reportOn: reportOn, basePath: packagePath);
     }
-    final String result = await formatter.format(_globalHitmap);
+    final String result = formatter(_globalHitmap);
     _globalHitmap = null;
     return result;
   }
 
-  Future<bool> collectCoverageData(String coveragePath, { bool mergeCoverageData = false, Directory coverageDirectory }) async {
-    final String coverageData = await finalizeCoverage(
+  bool collectCoverageData(String coveragePath, { bool mergeCoverageData = false, Directory coverageDirectory }) {
+    final String coverageData = finalizeCoverage(
       coverageDirectory: coverageDirectory,
     );
     _logMessage('coverage information collection complete');

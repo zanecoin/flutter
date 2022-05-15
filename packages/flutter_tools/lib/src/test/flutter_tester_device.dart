@@ -12,7 +12,6 @@ import 'package:meta/meta.dart';
 import 'package:process/process.dart';
 import 'package:stream_channel/stream_channel.dart';
 
-import '../base/common.dart';
 import '../base/file_system.dart';
 import '../base/io.dart';
 import '../base/logger.dart';
@@ -20,6 +19,7 @@ import '../base/os.dart';
 import '../base/platform.dart';
 import '../convert.dart';
 import '../device.dart';
+import '../globals.dart' as globals;
 import '../project.dart';
 import '../vmservice.dart';
 
@@ -39,7 +39,7 @@ class FlutterTesterTestDevice extends TestDevice {
     @required this.enableObservatory,
     @required this.machine,
     @required this.host,
-    @required this.buildTestAssets,
+    @required this.testAssetDirectory,
     @required this.flutterProject,
     @required this.icudtlPath,
     @required this.compileExpression,
@@ -66,7 +66,7 @@ class FlutterTesterTestDevice extends TestDevice {
   final bool enableObservatory;
   final bool machine;
   final InternetAddress host;
-  final bool buildTestAssets;
+  final String testAssetDirectory;
   final FlutterProject flutterProject;
   final String icudtlPath;
   final CompileExpression compileExpression;
@@ -93,7 +93,6 @@ class FlutterTesterTestDevice extends TestDevice {
     // Let the server choose an unused port.
     _server = await bind(host, /*port*/ 0);
     logger.printTrace('test $id: test harness socket server is running at port:${_server.port}');
-
     final List<String> command = <String>[
       // Until an arm64 flutter tester binary is available, force to run in Rosetta
       // to avoid "unexpectedly got a signal in sigtramp" crash.
@@ -128,7 +127,10 @@ class FlutterTesterTestDevice extends TestDevice {
       '--enable-dart-profiling',
       '--non-interactive',
       '--use-test-fonts',
+      '--disable-asset-fonts',
       '--packages=${debuggingOptions.buildInfo.packagesPath}',
+      if (testAssetDirectory != null)
+        '--flutter-assets-dir=$testAssetDirectory',
       if (debuggingOptions.nullAssertions)
         '--dart-flags=--null_assertions',
       ...debuggingOptions.dartEntrypointArgs,
@@ -148,8 +150,8 @@ class FlutterTesterTestDevice extends TestDevice {
       'FONTCONFIG_FILE': fontConfigManager.fontConfigFile.path,
       'SERVER_PORT': _server.port.toString(),
       'APP_NAME': flutterProject?.manifest?.appName ?? '',
-      if (buildTestAssets)
-        'UNIT_TEST_ASSETS': fileSystem.path.join(flutterProject?.directory?.path ?? '', 'build', 'unit_test_assets'),
+      if (testAssetDirectory != null)
+        'UNIT_TEST_ASSETS': testAssetDirectory,
     };
 
     logger.printTrace('test $id: Starting flutter_tester process with command=$command, environment=$environment');
@@ -294,7 +296,6 @@ class FlutterTesterTestDevice extends TestDevice {
     @required Process process,
     @required Future<void> Function(Uri uri) reportObservatoryUri,
   }) {
-    const String observatoryString = 'Observatory listening on ';
     for (final Stream<List<int>> stream in <Stream<List<int>>>[
       process.stderr,
       process.stdout,
@@ -306,9 +307,10 @@ class FlutterTesterTestDevice extends TestDevice {
             (String line) async {
           logger.printTrace('test $id: Shell: $line');
 
-          if (line.startsWith(observatoryString)) {
+          final Match match = globals.kVMServiceMessageRegExp.firstMatch(line);
+          if (match != null) {
             try {
-              final Uri uri = Uri.parse(line.substring(observatoryString.length));
+              final Uri uri = Uri.parse(match[1]);
               if (reportObservatoryUri != null) {
                 await reportObservatoryUri(uri);
               }

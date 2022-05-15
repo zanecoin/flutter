@@ -24,16 +24,16 @@ void main() {
   late int dragEndCount;
   const Offset forcePressOffset = Offset(400.0, 50.0);
 
-  void _handleTapDown(TapDownDetails details) { tapCount++; }
-  void _handleSingleTapUp(TapUpDetails details) { singleTapUpCount++; }
-  void _handleSingleTapCancel() { singleTapCancelCount++; }
-  void _handleSingleLongTapStart(LongPressStartDetails details) { singleLongTapStartCount++; }
-  void _handleDoubleTapDown(TapDownDetails details) { doubleTapDownCount++; }
-  void _handleForcePressStart(ForcePressDetails details) { forcePressStartCount++; }
-  void _handleForcePressEnd(ForcePressDetails details) { forcePressEndCount++; }
-  void _handleDragSelectionStart(DragStartDetails details) { dragStartCount++; }
-  void _handleDragSelectionUpdate(DragStartDetails _, DragUpdateDetails details) { dragUpdateCount++; }
-  void _handleDragSelectionEnd(DragEndDetails details) { dragEndCount++; }
+  void handleTapDown(TapDownDetails details) { tapCount++; }
+  void handleSingleTapUp(TapUpDetails details) { singleTapUpCount++; }
+  void handleSingleTapCancel() { singleTapCancelCount++; }
+  void handleSingleLongTapStart(LongPressStartDetails details) { singleLongTapStartCount++; }
+  void handleDoubleTapDown(TapDownDetails details) { doubleTapDownCount++; }
+  void handleForcePressStart(ForcePressDetails details) { forcePressStartCount++; }
+  void handleForcePressEnd(ForcePressDetails details) { forcePressEndCount++; }
+  void handleDragSelectionStart(DragStartDetails details) { dragStartCount++; }
+  void handleDragSelectionUpdate(DragStartDetails _, DragUpdateDetails details) { dragUpdateCount++; }
+  void handleDragSelectionEnd(DragEndDetails details) { dragEndCount++; }
 
   setUp(() {
     tapCount = 0;
@@ -52,16 +52,16 @@ void main() {
     await tester.pumpWidget(
       TextSelectionGestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTapDown: _handleTapDown,
-        onSingleTapUp: _handleSingleTapUp,
-        onSingleTapCancel: _handleSingleTapCancel,
-        onSingleLongTapStart: _handleSingleLongTapStart,
-        onDoubleTapDown: _handleDoubleTapDown,
-        onForcePressStart: _handleForcePressStart,
-        onForcePressEnd: _handleForcePressEnd,
-        onDragSelectionStart: _handleDragSelectionStart,
-        onDragSelectionUpdate: _handleDragSelectionUpdate,
-        onDragSelectionEnd: _handleDragSelectionEnd,
+        onTapDown: handleTapDown,
+        onSingleTapUp: handleSingleTapUp,
+        onSingleTapCancel: handleSingleTapCancel,
+        onSingleLongTapStart: handleSingleLongTapStart,
+        onDoubleTapDown: handleDoubleTapDown,
+        onForcePressStart: handleForcePressStart,
+        onForcePressEnd: handleForcePressEnd,
+        onDragSelectionStart: handleDragSelectionStart,
+        onDragSelectionUpdate: handleDragSelectionUpdate,
+        onDragSelectionEnd: handleDragSelectionEnd,
         child: Container(),
       ),
     );
@@ -90,6 +90,10 @@ void main() {
       ),
     );
   }
+
+  test('TextSelectionOverlay.fadeDuration exist', () async {
+    expect(TextSelectionOverlay.fadeDuration, SelectionOverlay.fadeDuration);
+  });
 
   testWidgets('a series of taps all call onTaps', (WidgetTester tester) async {
     await pumpGestureDetector(tester);
@@ -451,7 +455,7 @@ void main() {
     expect(renderEditable.selectPositionAtCalled, isTrue);
   });
 
-  testWidgets('TextSelectionGestureDetectorBuilder right click', (WidgetTester tester) async {
+  testWidgets('TextSelectionGestureDetectorBuilder right click Apple platforms', (WidgetTester tester) async {
     // Regression test for https://github.com/flutter/flutter/issues/80119
     await pumpTextSelectionGestureDetectorBuilder(tester);
 
@@ -492,7 +496,60 @@ void main() {
     await gesture.up();
     await tester.pump();
     expect(renderEditable.selectWordCalled, isFalse);
-  });
+  },
+    variant: const TargetPlatformVariant(<TargetPlatform>{ TargetPlatform.iOS, TargetPlatform.macOS }),
+  );
+
+  testWidgets('TextSelectionGestureDetectorBuilder right click non-Apple platforms', (WidgetTester tester) async {
+    // Regression test for https://github.com/flutter/flutter/issues/80119
+    await pumpTextSelectionGestureDetectorBuilder(tester);
+
+    final FakeRenderEditable renderEditable = tester.renderObject(find.byType(FakeEditable));
+    renderEditable.text = const TextSpan(text: 'one two three four five six seven');
+    await tester.pump();
+
+    final TestGesture gesture = await tester.createGesture(
+      pointer: 0,
+      kind: PointerDeviceKind.mouse,
+      buttons: kSecondaryButton,
+    );
+    addTearDown(gesture.removePointer);
+
+    // Get the location of the 10th character
+    final Offset charLocation = renderEditable
+        .getLocalRectForCaret(const TextPosition(offset: 10)).center;
+    final Offset globalCharLocation = charLocation + tester.getTopLeft(find.byType(FakeEditable));
+
+    // Right clicking on an unfocused field should place the cursor, not select
+    // the word.
+    await gesture.down(globalCharLocation);
+    await gesture.up();
+    await tester.pump();
+    expect(renderEditable.selectWordCalled, isFalse);
+    expect(renderEditable.selectPositionCalled, isTrue);
+
+    // Right clicking on a focused field with selection shouldn't change the
+    // selection.
+    renderEditable.selectPositionCalled = false;
+    renderEditable.selection = const TextSelection(baseOffset: 3, extentOffset: 20);
+    renderEditable.hasFocus = true;
+    await gesture.down(globalCharLocation);
+    await gesture.up();
+    await tester.pump();
+    expect(renderEditable.selectWordCalled, isFalse);
+    expect(renderEditable.selectPositionCalled, isFalse);
+
+    // Right clicking on a focused field with a reverse (right to left)
+    // selection shouldn't change the selection.
+    renderEditable.selection = const TextSelection(baseOffset: 20, extentOffset: 3);
+    await gesture.down(globalCharLocation);
+    await gesture.up();
+    await tester.pump();
+    expect(renderEditable.selectWordCalled, isFalse);
+    expect(renderEditable.selectPositionCalled, isFalse);
+  },
+    variant: const TargetPlatformVariant(<TargetPlatform>{ TargetPlatform.android, TargetPlatform.fuchsia, TargetPlatform.linux, TargetPlatform.windows }),
+  );
 
   testWidgets('test TextSelectionGestureDetectorBuilder tap', (WidgetTester tester) async {
     await pumpTextSelectionGestureDetectorBuilder(tester);
@@ -1034,28 +1091,6 @@ void main() {
       });
     });
   });
-
-  group('TextSelectionControls', () {
-    test('ClipboardStatusNotifier is updated on handleCut', () async {
-      final FakeClipboardStatusNotifier clipboardStatus = FakeClipboardStatusNotifier();
-      final FakeTextSelectionDelegate delegate = FakeTextSelectionDelegate();
-      final CustomTextSelectionControls textSelectionControls = CustomTextSelectionControls();
-
-      expect(clipboardStatus.updateCalled, false);
-      textSelectionControls.handleCut(delegate, clipboardStatus);
-      expect(clipboardStatus.updateCalled, true);
-    });
-
-    test('ClipboardStatusNotifier is updated on handleCopy', () async {
-      final FakeClipboardStatusNotifier clipboardStatus = FakeClipboardStatusNotifier();
-      final FakeTextSelectionDelegate delegate = FakeTextSelectionDelegate();
-      final CustomTextSelectionControls textSelectionControls = CustomTextSelectionControls();
-
-      expect(clipboardStatus.updateCalled, false);
-      textSelectionControls.handleCopy(delegate, clipboardStatus);
-      expect(clipboardStatus.updateCalled, true);
-    });
-  });
 }
 
 class FakeTextSelectionGestureDetectorBuilderDelegate implements TextSelectionGestureDetectorBuilderDelegate {
@@ -1076,8 +1111,7 @@ class FakeTextSelectionGestureDetectorBuilderDelegate implements TextSelectionGe
 }
 
 class FakeEditableText extends EditableText {
-  FakeEditableText({Key? key}): super(
-    key: key,
+  FakeEditableText({super.key}): super(
     controller: TextEditingController(),
     focusNode: FocusNode(),
     backgroundCursorColor: Colors.white,
@@ -1103,6 +1137,11 @@ class FakeEditableTextState extends EditableTextState {
   }
 
   @override
+  void toggleToolbar() {
+    return;
+  }
+
+  @override
   Widget build(BuildContext context) {
     super.build(context);
     return FakeEditable(this, key: _editableKey);
@@ -1112,8 +1151,8 @@ class FakeEditableTextState extends EditableTextState {
 class FakeEditable extends LeafRenderObjectWidget {
   const FakeEditable(
     this.delegate, {
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
   final EditableTextState delegate;
 
   @override
@@ -1163,11 +1202,21 @@ class FakeRenderEditable extends RenderEditable {
     selectPositionAtTo = to;
   }
 
+  bool selectPositionCalled = false;
+  @override
+  void selectPosition({ required SelectionChangedCause cause }) {
+    selectPositionCalled = true;
+    return super.selectPosition(cause: cause);
+  }
+
   bool selectWordCalled = false;
   @override
   void selectWord({ required SelectionChangedCause cause }) {
     selectWordCalled = true;
   }
+
+  @override
+  bool hasFocus = false;
 }
 
 class CustomTextSelectionControls extends TextSelectionControls {
@@ -1184,7 +1233,7 @@ class CustomTextSelectionControls extends TextSelectionControls {
     Offset position,
     List<TextSelectionPoint> endpoints,
     TextSelectionDelegate delegate,
-    ClipboardStatusNotifier clipboardStatus,
+    ClipboardStatusNotifier? clipboardStatus,
     Offset? lastSecondaryTapDownPosition,
   ) {
     throw UnimplementedError();
@@ -1221,15 +1270,15 @@ class TextSelectionControlsSpy extends TextSelectionControls {
 
   @override
   Widget buildToolbar(
-      BuildContext context,
-      Rect globalEditableRegion,
-      double textLineHeight,
-      Offset position,
-      List<TextSelectionPoint> endpoints,
-      TextSelectionDelegate delegate,
-      ClipboardStatusNotifier clipboardStatus,
-      Offset? lastSecondaryTapDownPosition,
-      ) {
+    BuildContext context,
+    Rect globalEditableRegion,
+    double textLineHeight,
+    Offset position,
+    List<TextSelectionPoint> endpoints,
+    TextSelectionDelegate delegate,
+    ClipboardStatusNotifier? clipboardStatus,
+    Offset? lastSecondaryTapDownPosition,
+  ) {
     return Text('dummy', key: toolBarKey);
   }
 
@@ -1246,9 +1295,6 @@ class TextSelectionControlsSpy extends TextSelectionControls {
 
 class FakeClipboardStatusNotifier extends ClipboardStatusNotifier {
   FakeClipboardStatusNotifier() : super(value: ClipboardStatus.unknown);
-
-  @override
-  bool get disposed => false;
 
   bool updateCalled = false;
   @override

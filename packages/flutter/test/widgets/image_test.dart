@@ -1686,7 +1686,7 @@ void main() {
     expect(tester.takeException(), 'threw');
   });
 
-  Future<void> _testRotatedImage(WidgetTester tester, bool isAntiAlias) async {
+  Future<void> testRotatedImage(WidgetTester tester, bool isAntiAlias) async {
     final Key key = UniqueKey();
     await tester.pumpWidget(RepaintBoundary(
       key: key,
@@ -1717,8 +1717,8 @@ void main() {
   testWidgets(
     'Rotated images',
     (WidgetTester tester) async {
-      await _testRotatedImage(tester, true);
-      await _testRotatedImage(tester, false);
+      await testRotatedImage(tester, true);
+      await testRotatedImage(tester, false);
     },
     skip: kIsWeb, // https://github.com/flutter/flutter/issues/87933.
   );
@@ -1995,7 +1995,7 @@ class _ConfigurationAwareKey {
   }
 
   @override
-  int get hashCode => hashValues(provider, configuration);
+  int get hashCode => Object.hash(provider, configuration);
 }
 
 class _ConfigurationKeyedTestImageProvider extends _TestImageProvider {

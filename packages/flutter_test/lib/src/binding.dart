@@ -161,6 +161,9 @@ abstract class TestWidgetsFlutterBinding extends BindingBase
   final TestWindow _window;
 
   @override
+  TestPlatformDispatcher get platformDispatcher => _window.platformDispatcher;
+
+  @override
   TestRestorationManager get restorationManager {
     _restorationManager ??= createRestorationManager();
     return _restorationManager!;
@@ -1112,8 +1115,8 @@ class AutomatedTestWidgetsFlutterBinding extends TestWidgetsFlutterBinding {
   @override
   void ensureFrameCallbacksRegistered() {
     // Leave PlatformDispatcher alone, do nothing.
-    assert(window.onDrawFrame == null);
-    assert(window.onBeginFrame == null);
+    assert(platformDispatcher.onDrawFrame == null);
+    assert(platformDispatcher.onBeginFrame == null);
   }
 
   @override
@@ -1550,7 +1553,7 @@ class LiveTestWidgetsFlutterBinding extends TestWidgetsFlutterBinding {
       _pendingFrame = null;
       _expectingFrame = false;
     } else if (framePolicy != LiveTestWidgetsFlutterBindingFramePolicy.benchmark) {
-      window.scheduleFrame();
+      platformDispatcher.scheduleFrame();
     }
   }
 
@@ -1776,7 +1779,7 @@ class TestViewConfiguration extends ViewConfiguration {
   TestViewConfiguration._(Size size, ui.FlutterView window)
     : _paintMatrix = _getMatrix(size, window.devicePixelRatio, window),
       _hitTestMatrix = _getMatrix(size, 1.0, window),
-      super(size: size);
+      super(size: size, devicePixelRatio: window.devicePixelRatio);
 
   static Matrix4 _getMatrix(Size size, double devicePixelRatio, ui.FlutterView window) {
     final double inverseRatio = devicePixelRatio / window.devicePixelRatio;
@@ -1838,10 +1841,10 @@ class _LiveTestPointerRecord {
 
 class _LiveTestRenderView extends RenderView {
   _LiveTestRenderView({
-    required ViewConfiguration configuration,
+    required super.configuration,
     required this.onNeedPaint,
-    required ui.FlutterView window,
-  }) : super(configuration: configuration, window: window);
+    required super.window,
+  });
 
   @override
   TestViewConfiguration get configuration => super.configuration as TestViewConfiguration;
